@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Borç Takip</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+:root{
+  --bg:#f4f6f8;
+  --card:#ffffff;
+  --text:#111;
+  --line:#d1d5db;
+  --blue:#2563eb;
+  --green:#16a34a;
+  --red:#dc2626;
+}
+
+body.dark{
+  --bg:#0f172a;
+  --card:#1e293b;
+  --text:#e5e7eb;
+  --line:#334155;
+}
+
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+
+header{
+  padding:16px;
+  background:var(--blue);
+  color:#fff;
+  font-size:20px;
+  font-weight:600;
+  text-align:center;
+}
+
+.container{
+  padding:16px;
+  max-width:760px;
+  margin:auto;
+}
+
+.row{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+button{
+  border:none;
+  padding:10px 14px;
+  border-radius:10px;
+  font-size:14px;
+  cursor:pointer;
+}
+
+.btn-primary{background:var(--blue);color:#fff;}
+.btn-green{background:var(--green);color:#fff;}
+.btn-red{background:var(--red);color:#fff;}
+.btn-outline{background:var(--card);border:1px solid var(--line);color:var(--text);}
+
+.card{
+  background:var(--card);
+  border-radius:14px;
+  padding:14px;
+  margin-bottom:12px;
+  box-shadow:0 4px 12px rgba(0,0,0,.05);
+}
+
+.bold{font-weight:600}
+.small{font-size:13px;color:gray}
+
+.modal{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.45);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:20;
+}
+
+.modal-content{
+  background:var(--card);
+  color:var(--text);
+  padding:16px;
+  border-radius:14px;
+  width:92%;
+  max-width:420px;
+  max-height:90vh;
+  overflow:auto;
+}
+
+input,select{
+  width:100%;
+  padding:10px;
+  margin-bottom:10px;
+  border-radius:10px;
+  border:1px solid var(--line);
+  background:var(--card);
+  color:var(--text);
+}
+</style>
+</head>
+
+<body>
+
+<header>Borç Takip</header>
+
+<div class="container">
+
+  <div class="row" style="margin-bottom:12px">
+    <button class="btn-primary" onclick="openForm()">➕ Ödeme Ekle</button>
+    <button class="btn-green" onclick="openPaid()">✔️ Ödenenler</button>
+    <button class="btn-outline" onclick="openSettings()">⚙️ Ayarlar</button>
+  </div>
+
+  <!-- AKTİF FİLTRE -->
+  <div class="card">
+    <div class="bold">⏳ Aktif Borç Filtrele</div><br>
+    <input type="date" id="af_start">
+    <input type="date" id="af_end">
+    <button class="btn-outline" onclick="applyActiveFilter()">Filtrele</button>
+    <button class="btn-outline" onclick="clearActiveFilter()">Tüm Aktifler</button>
+  </div>
+
+  <div class="card bold" id="total"></div>
+  <div id="aktifList"></div>
+
+</div>
+
+<!-- FORM -->
+<div class="modal" id="formModal">
+  <div class="modal-content">
+    <h3>Ödeme</h3>
+    <input type="date" id="f_date">
+    <input type="text" id="f_amount" placeholder="Tutar" oninput="formatAmount(this)">
+    <input type="text" id="f_desc" placeholder="Açıklama">
+    <input type="text" id="f_person" placeholder="Kime">
+    <select id="f_method">
+      <option>Kredi Kartı</option>
+      <option>Nakit</option>
+      <option>Havale / EFT</option>
+    </select>
+    <button class="btn-primary" onclick="save()">Kaydet</button>
+  </div>
+</div>
+
+<!-- ÖDENENLER -->
+<div class="modal" id="paidModal">
+  <div class="modal-content">
+    <h3>Ödenen Borçlar</h3>
+
+    <input type="date" id="pf_start">
+    <input type="date" id="pf_end">
+    <button class="btn-outline" onclick="renderPaid()">Filtrele</button>
+
+    <div id="paidList"></div>
+  </div>
+</div>
+
+<!-- DETAY -->
+<div class="modal" id="detailModal">
+  <div class="modal-content" id="detailContent"></div>
+</div>
+
+<!-- AYARLAR -->
+<div class="modal" id="settingsModal">
+  <div class="modal-content">
+    <h3>Ayarlar</h3>
+
+    <b>Tema</b>
+    <select onchange="setTheme(this.value)">
+      <option value="">Light</option>
+      <option value="dark">Dark</option>
+    </select>
+
+    <hr>
+
+    <b>Dışa Aktar</b>
+    <select id="ex_type">
+      <option value="aktif">Aktif Borçlar</option>
+      <option value="odendi">Ödenen Borçlar</option>
+      <option value="hepsi">Her İkisi</option>
+    </select>
+    <input type="date" id="ex_start">
+    <input type="date" id="ex_end">
+    <button class="btn-outline" onclick="exportCSV()">Excel</button>
+    <button class="btn-outline" onclick="exportPDF()">PDF</button>
+
+    <hr>
+
+    <button class="btn-red" onclick="confirmReset()">Tüm Verileri Sil</button>
+  </div>
+</div>
+
+<!-- RESET -->
+<div class="modal" id="resetModal">
+  <div class="modal-content">
+    <h3>⚠️ Emin misin?</h3>
+    <button class="btn-red" onclick="resetAll()">Onayla</button>
+    <button class="btn-outline" onclick="closeReset()">Vazgeç</button>
+  </div>
+</div>
+
+<script>
+let borclar = JSON.parse(localStorage.getItem("borclar")) || [];
+let activeFiltered = null;
+
+/* THEME */
+function setTheme(t){
+  document.body.className = t || "";
+  localStorage.setItem("theme",t);
+}
+const savedTheme = localStorage.getItem("theme");
+if(savedTheme) setTheme(savedTheme);
+
+/* UTIL */
+const trDate=d=>new Date(d).toLocaleDateString("tr-TR");
+const gun=d=>new Date(d).toLocaleDateString("tr-TR",{weekday:"long"});
+const parseAmount=v=>Number(v.replace(/\./g,""));
+function formatAmount(el){
+  el.value = el.value.replace(/\D/g,"").replace(/\B(?=(\d{3})+(?!\d))/g,".");
+}
+
+/* ACTIVE FILTER */
+function applyActiveFilter(){
+  const s=af_start.value,e=af_end.value;
+  activeFiltered = borclar.filter(x=>
+    x.durum==="aktif" &&
+    (!s||x.date>=s) &&
+    (!e||x.date<=e)
+  );
+  render();
+}
+function clearActiveFilter(){
+  activeFiltered=null;
+  af_start.value=af_end.value="";
+  render();
+}
+
+/* RENDER */
+function render(){
+  const list = activeFiltered || borclar.filter(x=>x.durum==="aktif");
+  let toplam = list.reduce((s,x)=>s+x.amount,0);
+  total.innerText=`Toplam Aktif Borç: ${toplam.toLocaleString("tr-TR")} ₺`;
+
+  aktifList.innerHTML="";
+  list.forEach(x=>{
+    aktifList.innerHTML+=`
+    <div class="card">
+      <div class="bold">${trDate(x.date)} (${gun(x.date)})</div>
+      <div class="small">${x.desc} • ${x.person} • ${x.method}</div>
+      <div class="bold">${x.amount.toLocaleString("tr-TR")} ₺</div>
+    </div>`;
+  });
+}
+
+/* ÖDENEN */
+function openPaid(){
+  paidModal.style.display="flex";
+  renderPaid();
+}
+function renderPaid(){
+  const s=pf_start.value,e=pf_end.value;
+  const list = borclar.filter(x=>
+    x.durum==="odendi" &&
+    (!s||x.odemeTarihi>=trDate(s)) &&
+    (!e||x.odemeTarihi<=trDate(e))
+  );
+  paidList.innerHTML="";
+  list.forEach(x=>{
+    paidList.innerHTML+=`
+    <div class="card" onclick="showDetail(${x.id})">
+      <div class="bold">${x.desc}</div>
+      <div class="small">${x.amount.toLocaleString("tr-TR")} ₺</div>
+    </div>`;
+  });
+}
+function showDetail(id){
+  const x=borclar.find(b=>b.id===id);
+  detailContent.innerHTML=`
+    <h3>${x.desc}</h3>
+    <p>Vade: ${trDate(x.date)} (${gun(x.date)})</p>
+    <p>Kime: ${x.person}</p>
+    <p>Ödeme: ${x.method}</p>
+    <p>Tutar: ${x.amount.toLocaleString("tr-TR")} ₺</p>
+    <p>Ödendi: ${x.odemeTarihi}</p>
+  `;
+  detailModal.style.display="flex";
+}
+
+/* EXPORT */
+function getExportData(){
+  const t=ex_type.value,s=ex_start.value,e=ex_end.value;
+  return borclar.filter(x=>{
+    if(t==="aktif"&&x.durum!=="aktif")return false;
+    if(t==="odendi"&&x.durum!=="odendi")return false;
+    if(s&&x.date<s)return false;
+    if(e&&x.date>e)return false;
+    return true;
+  });
+}
+function exportCSV(){
+  let csv="\uFEFFDurum;Vade;Gün;Açıklama;Kime;Ödeme Şekli;Tutar;Ödeme Tarihi\n";
+  getExportData().forEach(x=>{
+    csv+=`${x.durum};${trDate(x.date)};${gun(x.date)};${x.desc};${x.person};${x.method};${x.amount};${x.odemeTarihi||""}\n`;
+  });
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8;"}));
+  a.download="borclar.csv";a.click();
+}
+function exportPDF(){
+  const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF({unit:"pt",format:"a4"});
+  let y=40;
+  getExportData().forEach(x=>{
+    pdf.text(`Durum: ${x.durum}`,40,y); y+=14;
+    pdf.text(`Vade: ${trDate(x.date)} (${gun(x.date)})`,40,y); y+=14;
+    pdf.text(`Açıklama: ${x.desc}`,40,y); y+=14;
+    pdf.text(`Kime: ${x.person}`,40,y); y+=14;
+    pdf.text(`Ödeme: ${x.method}`,40,y); y+=14;
+    pdf.text(`Tutar: ${x.amount.toLocaleString("tr-TR")} ₺`,40,y); y+=14;
+    if(x.odemeTarihi){pdf.text(`Ödendi: ${x.odemeTarihi}`,40,y); y+=14;}
+    y+=10;
+    if(y>760){pdf.addPage();y=40;}
+  });
+  pdf.save("borclar.pdf");
+}
+
+/* SETTINGS */
+function openSettings(){settingsModal.style.display="flex"}
+function confirmReset(){resetModal.style.display="flex"}
+function closeReset(){resetModal.style.display="none"}
+function resetAll(){
+  localStorage.clear();
+  borclar=[];
+  closeReset();
+  settingsModal.style.display="none";
+  render();
+}
+
+window.onclick=e=>{
+  if(e.target.classList.contains("modal")) e.target.style.display="none";
+};
+
+render();
+</script>
+
+</body>
+</html>
